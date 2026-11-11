@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repotrail"
 version = "0.1.0"
-description = "Map an unfamiliar Python repository and find a path into its code."
+description = "Scaffold for a multilingual repository exploration tool."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
