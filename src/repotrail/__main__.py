@@ -1,3 +1,5 @@
-from .cli import main
+"""支持通过python -m repotrail启动"""
+from repotrail.cli import main
 
-raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())

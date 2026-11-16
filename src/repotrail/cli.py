@@ -1,16 +1,26 @@
-"""命令行入口：当前只负责展示帮助和版本。"""
+"""命令行参数处理"""
+
 import argparse
 
-from . import __version__
-
+from repotrail import __version__
 
 def main(argv: list[str] | None = None) -> int:
+    """处理命令行参数并返回退出码。"""
     parser = argparse.ArgumentParser(
-        prog='repotrail',
-        description='RepoTrail · 代码路标：多语言仓库导读工具（当前为最小脚手架）。',
-        epilog='当前尚未实现仓库扫描、代码解析和可视化。',
+        prog="repotrail",
+        description="帮助开发者理解陌生代码库。",
     )
-    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
+
+    # 注册 --version 参数
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="显示程序版本信息并退出。",
+    )
+
+    # 解析参数
     parser.parse_args(argv)
+
     parser.print_help()
     return 0
