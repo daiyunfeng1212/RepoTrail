@@ -38,6 +38,8 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_scanner.py" -v
 - 根路径是文件时抛出 NotADirectoryError。
 - 读取目录失败时向调用方传播 PermissionError。
 
+`test_cli.py`通过真实子进程验证命令行帮助、版本、参数错误、扫描结果、空目录和文件系统错误的输出与退出码。
+
 ## 测试约定
 
 - 文件使用 test_*.py 命名，测试方法使用 test_* 命名。

@@ -3,7 +3,8 @@
 import stat
 from pathlib import Path
 
-IGNORED_DIRS = [".git", "node_modules", "__pycache__",".venv"]
+IGNORED_DIRS = [".git", "node_modules", "__pycache__", ".venv"]
+
 
 def scan_files(root: Path) -> list[Path]:
     """返回排序后的相对文件路径，跳过忽略目录和符号链接。
@@ -25,11 +26,9 @@ def scan_files(root: Path) -> list[Path]:
     files: list[Path] = []
 
     while pending:
-
         current = pending.pop()
 
         for entry in current.iterdir():
-
             entry_mode = entry.stat(follow_symlinks=False).st_mode
 
             if stat.S_ISDIR(entry_mode):
@@ -41,5 +40,4 @@ def scan_files(root: Path) -> list[Path]:
                 # /repo/src/main.py -> src/main.py
                 files.append(entry.relative_to(root))
 
-    return sorted(files,key= lambda path: path.as_posix())
-
+    return sorted(files, key=lambda path: path.as_posix())

@@ -1,10 +1,12 @@
 """验证文件扫描的正常行为与重要边界"""
+
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from repotrail.scanner import scan_files
+
 
 class ScanFilesTests(unittest.TestCase):
     def test_returns_sorted_relative_paths(self) -> None:
@@ -15,12 +17,14 @@ class ScanFilesTests(unittest.TestCase):
             (root / "src").mkdir()
 
             # 创建文件并写入文本
-            (root / "src" / "b.py").write_text("",encoding="utf-8")
-            (root /"z.py").write_text("",encoding="utf-8")
-            (root / "a.py").write_text("",encoding="utf-8")
+            (root / "src" / "b.py").write_text("", encoding="utf-8")
+            (root / "z.py").write_text("", encoding="utf-8")
+            (root / "a.py").write_text("", encoding="utf-8")
 
             # assertEqual 同时验证文件范围、相对路径和排列顺序
-            self.assertEqual(scan_files(root),[Path("a.py"),Path("src/b.py"),Path("z.py")])
+            self.assertEqual(
+                scan_files(root), [Path("a.py"), Path("src/b.py"), Path("z.py")]
+            )
 
     def test_skips_ignored_directories(self) -> None:
         with TemporaryDirectory() as directory:
