@@ -7,7 +7,6 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -23,6 +22,8 @@ class CliTests(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
+            # 测试需要检查失败命令的退出码，因此非零退出时不抛异常。
+            check=False,
             timeout=10,
         )
 
@@ -76,6 +77,29 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout.strip(), "共0个文件。")
+            self.assertEqual(result.stderr, "")
+
+    def test_scan_can_show_candidate_languages(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app.py").write_text("", encoding="utf-8")
+            (root / "view.tsx").write_text("", encoding="utf-8")
+            (root / "README.md").write_text("", encoding="utf-8")
+
+            result = self.run_cli(["scan", str(root), "--show-language"])
+
+            self.assertEqual(result.returncode, 0)
+            # 检查语言识别已接入命令行，未知类型仍保留并计入总数。
+            # 顺序仍按文件路径排列，不因语言分组而改变。
+            self.assertEqual(
+                result.stdout.splitlines(),
+                [
+                    "unknown\tREADME.md",
+                    "python\tapp.py",
+                    "typescript\tview.tsx",
+                    "共3个文件。",
+                ],
+            )
             self.assertEqual(result.stderr, "")
 
     def test_scan_reports_filesystem_errors(self) -> None:

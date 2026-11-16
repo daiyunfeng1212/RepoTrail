@@ -4,26 +4,27 @@
 
 ## 运行方式
 
-在项目根目录激活虚拟环境：
+在项目根目录激活虚拟环境，并以可编辑模式安装项目：
 
 ```bash
 cd /home/lmf/Projects/active/RepoTrail
 source .venv/bin/activate
+python -m pip install -e .
 ```
 
 运行全部测试：
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 ```
 
 只运行文件扫描测试：
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -p "test_scanner.py" -v
+python -m unittest discover -s tests -p "test_scanner.py" -v
 ```
 
-`PYTHONPATH=src` 让 Python 能找到尚未安装的 repotrail 包。
+可编辑安装后，Python 可以找到 `repotrail` 包，无需设置 `PYTHONPATH`。
 `-v` 显示每个测试用例的名称和执行结果。
 
 ## 当前测试范围
@@ -38,7 +39,10 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_scanner.py" -v
 - 根路径是文件时抛出 NotADirectoryError。
 - 读取目录失败时向调用方传播 PermissionError。
 
-`test_cli.py`通过真实子进程验证命令行帮助、版本、参数错误、扫描结果、空目录和文件系统错误的输出与退出码。
+`test_cli.py` 通过真实子进程验证命令行帮助、版本、参数错误、扫描结果、空目录和文件系统错误的输出与退出码，
+并验证 `--show-language` 展示候选语言、保留未知类型文件及维持路径顺序和总数。
+
+`test_languages.py` 验证语言扩展名别名、大小写匹配、未知或缺失扩展名，以及无需文件实际存在的分类行为。
 
 ## 测试约定
 
