@@ -12,3 +12,4 @@ docs/*
 test.ipynb
 test.py
 .venv
+*.egg-info/

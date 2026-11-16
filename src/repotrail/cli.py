@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 子命令用于区分用户想执行的操作。
     # dest ="command" 表示把所选子命令保存在 args.command 中。
-    subparsers = parser.add_subparsers(dest="command", title="子命令")
+    subparsers = parser.add_subparsers(dest="command", title="commands")
 
     # 注册 scan 子命令
     scan_parser = subparsers.add_parser(

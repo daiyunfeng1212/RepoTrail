@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+# 项目的标准元数据
+[project]
+
+name = "repotrail"
+dynamic = ["version"]
+description = "帮助开发者理解陌生代码库的本地导读工具。"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+# 安装时生成命令行入口。
+[project.scripts]
+repotrail = "repotrail.cli:main"
+
+[tool.setuptools.packages.find]
+
+where = ["src"]
+
+[tool.setuptools.dynamic]
+
+version = {attr = "repotrail.__version__"}
