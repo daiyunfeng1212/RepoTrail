@@ -1,9 +1,64 @@
-# 测试目录
+# 测试说明
 
-项目已回到 Python 路线，测试优先使用标准库 `unittest`。旧应用测试此前已随实现清理，目前尚未恢复测试文件和测试命令。
+使用 Python 标准库 unittest 验证功能行为，无需安装额外测试依赖。
 
-清理前旧版本的 17 个测试通过，备份位置见根目录 README 的“历史备份”；恢复后仍需重新验证。
+## 运行方式
 
-恢复 Python 入口时再逐步建立对应测试。后续按功能添加正常行为和重要边界测试，优先使用临时目录，避免依赖开发者机器上的固定内容。
+在项目根目录激活虚拟环境：
 
-目录扫描可参考旧测试的验收场景：嵌套路径、稳定排序、目录过滤、空目录、无效路径、符号链接和读取异常。源码样例的预期关系见 `examples/README.md`，不代表解析功能已经实现。
+```bash
+cd /home/lmf/Projects/active/RepoTrail
+source .venv/bin/activate
+```
+
+运行全部测试：
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+只运行文件扫描测试：
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -p "test_scanner.py" -v
+```
+
+`PYTHONPATH=src` 让 Python 能找到尚未安装的 repotrail 包。
+`-v` 显示每个测试用例的名称和执行结果。
+
+## 当前测试范围
+
+`test_scanner.py` 验证 `scan_files()`：
+
+- 收集嵌套目录中的文件，返回排序后的相对路径。
+- 跳过指定忽略目录，包括嵌套位置的忽略目录。
+- 跳过文件符号链接、目录符号链接和失效链接。
+- 空目录返回空列表。
+- 路径不存在时抛出 FileNotFoundError。
+- 根路径是文件时抛出 NotADirectoryError。
+- 读取目录失败时向调用方传播 PermissionError。
+
+## 测试约定
+
+- 文件使用 test_*.py 命名，测试方法使用 test_* 命名。
+- 使用 TemporaryDirectory 创建测试数据，测试结束后自动清理。
+- 不依赖开发者机器上的固定目录或真实仓库。
+- 对正常行为和重要边界编写测试，避免重复验证同一行为。
+- 使用 mock 模拟目录读取错误；这不代表已验证所有真实权限场景。
+
+## 平台限制
+
+符号链接用例要求运行环境允许创建符号链接。
+Windows 环境可能需要相应权限或系统设置。
+
+当前尚未完成 Windows 平台验证，不能据此宣称已支持全部
+Windows 路径及目录联接等特殊情况。
+
+## 结果判定
+
+以实际命令输出为准：
+
+- OK：本次执行的测试通过。
+- FAILED 或报错：需要检查失败原因。
+- 出现 skipped：有用例未执行，需要关注跳过原因。
+- 发现零个测试：不能视为功能验证通过。
