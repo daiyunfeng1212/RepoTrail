@@ -4,6 +4,7 @@ import argparse
 
 from repotrail import __version__
 
+
 def main(argv: list[str] | None = None) -> int:
     """处理命令行参数并返回退出码。"""
     parser = argparse.ArgumentParser(
@@ -13,7 +14,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # 注册 --version 参数
     parser.add_argument(
-        "-v", "--version",
+        "-v",
+        "--version",
         action="version",
         version=f"%(prog)s {__version__}",
         help="显示程序版本信息并退出。",

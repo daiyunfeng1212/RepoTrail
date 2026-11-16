@@ -1,11 +1,14 @@
 __pycache__/
 *.py[cod]
-.venv/
-*.egg-info/
 build/
 dist/
-.pytest_cache/
 reports/
 docs/private
 docs/tmp
 AGENTS.md
+examples/
+docs/*
+!docs/requirements.md
+test.ipynb
+test.py
+.venv
