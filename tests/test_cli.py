@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,7 +46,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
 
     def test_invalid_arguments(self) -> None:
-        for args in (["--unknown"], ["scan"], ["parse"], ["unknown"]):
+        for args in (
+            ["--unknown"],
+            ["scan"],
+            ["parse"],
+            ["unknown"],
+            ["parse", "sample.py", "--format", "yaml"],
+        ):
             with self.subTest(args=args):
                 result = self.run_cli(args)
 
@@ -189,6 +196,123 @@ class CliTests(unittest.TestCase):
             ):
                 with self.subTest(name=name):
                     result = self.run_cli(["parse", str(root / name)])
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("解析失败：", result.stderr)
+                    self.assertEqual(result.stdout, "")
+
+    def test_parse_can_show_qualified_names(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.py"
+            path.write_text(
+                "class Service:\n    def run(self):\n        return 1\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(["parse", str(path), "--qualified-names"])
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(
+                result.stdout.splitlines(),
+                ["class\tService\t1:3", "function\tService.run\t2:3", "共2个定义。"],
+            )
+            self.assertEqual(result.stderr, "")
+
+    def test_parse_json_exports_definition_fields(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.py"
+            path.write_text(
+                "class 服务:\n"
+                "    def 运行(self):\n"
+                "        return 1\n",
+                encoding="utf-8",
+            )
+
+            # 同时传入限定名开关，验证 JSON 始终导出完整字段。
+            result = self.run_cli(
+                [
+                    "parse",
+                    str(path),
+                    "--format",
+                    "json",
+                    "--qualified-names",
+                ]
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+
+            # loads() 将 JSON 字符串还原成 Python 数据结构。
+            # 如果输出中混入人类可读的总数，这一步也会失败。
+            self.assertEqual(
+                json.loads(result.stdout),
+                {
+                    "file": path.absolute().as_posix(),
+                    "language": "python",
+                    "symbols": [
+                        {
+                            "name": "服务",
+                            "kind": "class",
+                            "scope": [],
+                            "qualified_name": "服务",
+                            "parent_name": None,
+                            "start_line": 1,
+                            "end_line": 3,
+                        },
+                        {
+                            "name": "运行",
+                            "kind": "function",
+                            "scope": ["服务"],
+                            "qualified_name": "服务.运行",
+                            "parent_name": "服务",
+                            "start_line": 2,
+                            "end_line": 3,
+                        },
+                    ],
+                },
+            )
+
+            # 检查输出保留中文，便于直接查看导出文件。
+            self.assertIn("服务.运行", result.stdout)
+
+    def test_parse_json_preserves_empty_result(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty.py"
+            path.write_text("", encoding="utf-8")
+
+            result = self.run_cli(
+                ["parse", str(path), "--format", "json"]
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+
+            # 无定义仍是成功结果，symbols 应为一个空数组。
+            self.assertEqual(
+                json.loads(result.stdout),
+                {
+                    "file": path.absolute().as_posix(),
+                    "language": "python",
+                    "symbols": [],
+                },
+            )
+
+    def test_parse_json_failures_leave_stdout_empty(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            broken = root / "broken.py"
+            broken.write_text(
+                "def valid():\n    pass\ndef broken(:\n",
+                encoding="utf-8",
+            )
+
+            # 分别验证读取失败和部分源码损坏。
+            # 两种情况都不能输出成功或部分 JSON 结果。
+            for path in (root / "missing.py", broken):
+                with self.subTest(path=path):
+                    result = self.run_cli(
+                        ["parse", str(path), "--format", "json"]
+                    )
+
                     self.assertEqual(result.returncode, 1)
                     self.assertIn("解析失败：", result.stderr)
                     self.assertEqual(result.stdout, "")

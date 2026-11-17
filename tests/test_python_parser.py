@@ -1,11 +1,13 @@
 import unittest
-from repotrail.python_parser import extract_python_symbols,Symbol
+
+from repotrail.python_parser import Symbol, extract_python_symbols
+
 
 class ExtractPythonSymbolsTests(unittest.TestCase):
     def test_extracts_nested_and_decorated_definitions(self) -> None:
         # 相邻字符串自动拼接成一段源码。
 
-       source = (
+        source = (
             "class Service:\n"
             "    @staticmethod\n"
             "    def run():\n"
@@ -18,15 +20,15 @@ class ExtractPythonSymbolsTests(unittest.TestCase):
             '    return "ok"\n'
         )
 
-       self.assertEqual(
-           extract_python_symbols(source),
-           [
-               Symbol("Service","class",1,6),
-               Symbol("run","function",3,6),
-               Symbol("helper","function",4,5),
-               Symbol("load","function",9,10)
-           ],
-       )
+        self.assertEqual(
+            extract_python_symbols(source),
+            [
+                Symbol("Service", "class", 1, 6),
+                Symbol("run", "function", 3, 6, scope=("Service",)),
+                Symbol("helper", "function", 4, 5, scope=("Service", "run")),
+                Symbol("load", "function", 9, 10),
+            ],
+        )
 
     def test_handles_utf8_names_and_offsets(self) -> None:
         # 定义前和名称本身都包含中文，验证字节偏移处理正确。
@@ -34,7 +36,7 @@ class ExtractPythonSymbolsTests(unittest.TestCase):
 
         self.assertEqual(
             extract_python_symbols(source),
-            [Symbol("问候","function",3,4)],
+            [Symbol("问候", "function", 3, 4)],
         )
 
     def test_source_without_definitions_returns_empty_list(self) -> None:
@@ -58,3 +60,46 @@ class ExtractPythonSymbolsTests(unittest.TestCase):
             # 两个上下文分别标记测试场景、检查异常类型。
             with self.subTest(source=source), self.assertRaises(SyntaxError):
                 extract_python_symbols(source)
+
+    def test_distinguishes_same_names_by_owner(self) -> None:
+        source = (
+            "class User:\n"
+            "    def save(self): pass\n"
+            "class Order:\n"
+            "    def save(self): pass\n"
+            "def save(): pass\n"
+        )
+        symbols = extract_python_symbols(source)
+
+        # 相同简单名称对应不同归属；模块级定义没有父定义。
+        self.assertEqual(
+            [(s.name, s.qualified_name, s.parent_name) for s in symbols],
+            [
+                ("User", "User", None),
+                ("save", "User.save", "User"),
+                ("Order", "Order", None),
+                ("save", "Order.save", "Order"),
+                ("save", "save", None),
+            ],
+        )
+
+    def test_control_flow_does_not_add_definition_scope(self) -> None:
+        source = (
+            "if True:\n"
+            "    def outer():\n"
+            "        if True:\n"
+            "            class Local:\n"
+            "                def run(self):\n"
+            "                    pass\n"
+        )
+        symbols = extract_python_symbols(source)
+
+        # if 不增加定义归属，函数中的类、类中的方法则逐层增加。
+        self.assertEqual(
+            [(s.qualified_name, s.parent_name) for s in symbols],
+            [
+                ("outer", None),
+                ("outer.Local", "outer"),
+                ("outer.Local.run", "outer.Local"),
+            ],
+        )

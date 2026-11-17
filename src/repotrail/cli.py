@@ -4,6 +4,7 @@ import argparse
 import sys
 import tokenize
 from pathlib import Path
+import json
 
 from repotrail import __version__
 from repotrail.languages import detect_language
@@ -58,14 +59,35 @@ def main(argv: list[str] | None = None) -> int:
         "parse",
         help="提取单个 Python 文件中的类与函数定义。",
     )
-    parse_parser.add_argument("path", type=Path, help="要分析的 .py 文件路径。")
 
+    parse_parser.add_argument(
+        "path", 
+        type=Path, 
+        help="要分析的 .py 文件路径。"
+        )
+
+    # 默认继续显示简单名称，传入开关后显示外层类、函数组成的限定名。
+    parse_parser.add_argument(
+        "--qualified-names",
+        action="store_true",
+        help="显示包含外层类、函数的限定名。(仅限文本输出)。",
+    )
+
+    # choices 限制合法值，输入由argparse报告参数错误。
+    # default 保持已有命令的默认行为。
+    parse_parser.add_argument(
+        "--format",
+        choices=("text","json"),
+        default="text",
+        help="输出格式，默认text。"
+    )
     # 解析参数
     args = parser.parse_args(argv)
 
     if args.command is None:
         parser.print_help()
         return 0
+
 
     if args.command == "scan":
         try:
@@ -107,12 +129,45 @@ def main(argv: list[str] | None = None) -> int:
         print(f"解析失败：{error}", file=sys.stderr)
         return 1
 
+    if args.format == "json":
+        # absolute() 将相对路径转换为绝对路径，不解析符号链接。
+        # as_posix() 使用 / 表示路径分隔符。
+        #
+        # 显式声明导出字段，控制对外数据格式。
+        # qualified_name、parent_name 是计算属性，也需要主动加入。
+        document = {
+            "file": args.path.absolute().as_posix(),
+            "language": "python",
+            "symbols": [
+                {
+                    "name": symbol.name,
+                    "kind": symbol.kind,
+
+                    # Python 中使用元组保存作用域；
+                    # 导出时明确转换成列表，对应 JSON 数组。
+                    "scope": list(symbol.scope),
+
+                    "qualified_name": symbol.qualified_name,
+                    "parent_name": symbol.parent_name,
+                    "start_line": symbol.start_line,
+                    "end_line": symbol.end_line,
+                }
+                for symbol in symbols
+            ],
+        }
+
+        # dumps() 把字典、列表等基本结构转换成 JSON 字符串。
+        # ensure_ascii=False 保留中文字符，不转换成 Unicode 转义。
+        # indent=2 使用两空格缩进，方便直接查看。
+        print(json.dumps(document, ensure_ascii=False, indent=2))
+
+        # JSON 输出后直接返回，不能继续追加“共几个定义”等文本。
+        # 否则整个标准输出就不再是合法 JSON。
+        return 0
     # 完整提取成功后再输出，避免展示不完整的分析结果。
     # 行号从 1 开始，结束行包含在定义范围内。
     for symbol in symbols:
-        print(
-            f"{symbol.kind}\t{symbol.name}\t"
-            f"{symbol.start_line}:{symbol.end_line}"
-        )
+        name = symbol.qualified_name if args.qualified_names else symbol.name
+        print(f"{symbol.kind}\t{name}\t{symbol.start_line}:{symbol.end_line}")
     print(f"共{len(symbols)}个定义。")
     return 0
