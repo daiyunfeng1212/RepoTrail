@@ -1,16 +1,16 @@
 """处理命令行参数，调用扫描和 Python 定义提取功能。"""
 
 import argparse
+import json
 import sys
 import tokenize
 from pathlib import Path
-import json
 
 from repotrail import __version__
+from repotrail.graph import build_file_graph
 from repotrail.languages import detect_language
 from repotrail.python_parser import extract_python_symbols
 from repotrail.scanner import scan_files
-
 
 def main(argv: list[str] | None = None) -> int:
     """运行 CLI：成功返回 0，读取或分析失败返回 1。
@@ -81,6 +81,19 @@ def main(argv: list[str] | None = None) -> int:
         default="text",
         help="输出格式，默认text。"
     )
+
+    # graph 固定输出图谱JSON,拥有独立的参数集合。
+    graph_parser = subparsers.add_parser(
+        "graph",
+        help="生成单个python文件的包含关系图谱JSON。",
+    )
+
+    graph_parser.add_argument(
+        "path",
+        type=Path,
+        help="要分析的 .py 文件路径。",
+    )
+
     # 解析参数
     args = parser.parse_args(argv)
 
@@ -111,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"共{len(files)}个文件。")
         return 0
 
-    # argparse 当前只接受 scan 和 parse；scan 已在上方处理并返回。
+    # scan 已在上方处理并返回。
+    # parse 和 graph 共享下面的源码读取、定义提取流程。 
     # 分类决定能否选择 Python 解析器，读取和解析阶段再检查实际内容。
     if detect_language(args.path) != "python":
         print("解析失败：目前仅支持扩展名为 .py 的 Python 文件。", file=sys.stderr)
@@ -128,6 +142,11 @@ def main(argv: list[str] | None = None) -> int:
         # 预期输入错误转为提示，其他编程错误继续抛出。
         print(f"解析失败：{error}", file=sys.stderr)
         return 1
+
+    if args.command == "graph":
+        graph = build_file_graph(args.path,symbols)
+        print(json.dumps(graph,ensure_ascii=False,indent=2))
+        return 0
 
     if args.format == "json":
         # absolute() 将相对路径转换为绝对路径，不解析符号链接。

@@ -1,12 +1,12 @@
 """通过真实进程验证命令行入口与扫描功能的连接。"""
 
+import json
 import os
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,7 +30,13 @@ class CliTests(unittest.TestCase):
 
     def test_help(self) -> None:
         # 分别检查默认帮助、总帮助和各子命令帮助。
-        for args in ([], ["--help"], ["scan", "--help"], ["parse", "--help"]):
+        for args in (
+            [],
+            ["--help"],
+            ["scan", "--help"],
+            ["parse", "--help"],
+            ["graph", "--help"],
+        ):
             with self.subTest(args=args):
                 result = self.run_cli(args)
 
@@ -46,10 +52,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
 
     def test_invalid_arguments(self) -> None:
+        # 子命令缺少路径属于参数错误，应返回 2，而不是帮助用例的 0。
         for args in (
             ["--unknown"],
             ["scan"],
             ["parse"],
+            ["graph"],
             ["unknown"],
             ["parse", "sample.py", "--format", "yaml"],
         ):
@@ -221,9 +229,7 @@ class CliTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "sample.py"
             path.write_text(
-                "class 服务:\n"
-                "    def 运行(self):\n"
-                "        return 1\n",
+                "class 服务:\n    def 运行(self):\n        return 1\n",
                 encoding="utf-8",
             )
 
@@ -279,9 +285,7 @@ class CliTests(unittest.TestCase):
             path = Path(directory) / "empty.py"
             path.write_text("", encoding="utf-8")
 
-            result = self.run_cli(
-                ["parse", str(path), "--format", "json"]
-            )
+            result = self.run_cli(["parse", str(path), "--format", "json"])
 
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stderr, "")
@@ -309,9 +313,99 @@ class CliTests(unittest.TestCase):
             # 两种情况都不能输出成功或部分 JSON 结果。
             for path in (root / "missing.py", broken):
                 with self.subTest(path=path):
-                    result = self.run_cli(
-                        ["parse", str(path), "--format", "json"]
-                    )
+                    result = self.run_cli(["parse", str(path), "--format", "json"])
+
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("解析失败：", result.stderr)
+                    self.assertEqual(result.stdout, "")
+
+    def test_graph_exports_nodes_and_containment_edges(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.py"
+            path.write_text(
+                "class 服务:\n"
+                "    def 运行(self):\n"
+                "        return 1\n"
+                'raise RuntimeError("源码不应被执行")\n',
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(["graph", str(path)])
+
+            # 如果执行目标源码，末尾的 raise 会使命令失败。
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+
+            # 整个标准输出必须是合法 JSON，不能混入文本统计。
+            graph = json.loads(result.stdout)
+
+            # set(dict) 返回字典键的集合，检查顶层数据契约。
+            self.assertEqual(set(graph), {"nodes", "edges"})
+
+            nodes = graph["nodes"]
+            self.assertEqual(len(nodes), 3)
+            self.assertEqual(nodes[0]["kind"], "file")
+            self.assertEqual(
+                nodes[0]["file"],
+                path.absolute().as_posix(),
+            )
+            self.assertEqual(
+                [node["qualified_name"] for node in nodes],
+                [None, "服务", "服务.运行"],
+            )
+
+            # 文件包含类，类包含方法。
+            # 使用结果中的 ID 检查连接，不依赖 ID 的具体拼接方式。
+            self.assertEqual(
+                graph["edges"],
+                [
+                    {
+                        "source": nodes[0]["id"],
+                        "target": nodes[1]["id"],
+                        "kind": "contains",
+                    },
+                    {
+                        "source": nodes[1]["id"],
+                        "target": nodes[2]["id"],
+                        "kind": "contains",
+                    },
+                ],
+            )
+
+            self.assertIn("服务.运行", result.stdout)
+
+    def test_graph_empty_source_keeps_file_node(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "empty.py"
+            path.write_text("", encoding="utf-8")
+
+            result = self.run_cli(["graph", str(path)])
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+
+            graph = json.loads(result.stdout)
+
+            # 空文件仍然是仓库中的一个文件，因此保留文件节点。
+            self.assertEqual(len(graph["nodes"]), 1)
+            self.assertEqual(graph["nodes"][0]["kind"], "file")
+            self.assertEqual(graph["edges"], [])
+
+    def test_graph_input_errors_leave_stdout_empty(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            # 前面有完整定义，后面损坏，仍应拒绝输出部分结果。
+            (root / "broken.py").write_text(
+                "def valid():\n    pass\ndef broken(:\n",
+                encoding="utf-8",
+            )
+            (root / "app.js").write_text("", encoding="utf-8")
+
+            # 分别验证：不存在、解析失败、当前不支持的文件类型。
+            for name in ("missing.py", "broken.py", "app.js"):
+                with self.subTest(name=name):
+                    result = self.run_cli(["graph", str(root / name)])
 
                     self.assertEqual(result.returncode, 1)
                     self.assertIn("解析失败：", result.stderr)
