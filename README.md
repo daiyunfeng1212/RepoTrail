@@ -12,9 +12,33 @@
 - 已接入 Tree-sitter，支持提取 Python 类与函数定义，包括方法、异步和嵌套函数，返回名称、类型和源码行号。
 - 支持通过 `parse <文件>` 分析单个 Python 文件，遵循源码编码声明读取内容。
 - 提取结果包含定义归属，可通过 `--qualified-names` 展示类、函数的限定名。
-- 导入与关系分析、图谱、模型接入和浏览器界面仍待实现。
-- 已实现单文件结构图构建函数，生成文件、类、函数节点及包含边；当前尚未接入图谱命令和浏览器展示。
-- 支持通过 graph <文件> 输出单文件包含关系图谱 JSON；浏览器展示仍待实现。
+- 已实现单文件结构图构建函数，生成文件、类、函数节点及包含边，可通过 `graph <文件>` 输出 JSON。
+- 已实现目录分析函数，分别记录文件的分析成功、结构分析未支持和分析失败状态，目录分析命令尚未接入。
+- 导入与调用关系分析、模型接入和浏览器图谱展示仍待实现。
+
+## 代码结构
+
+```text
+src/repotrail/
+├── __init__.py             # 项目版本
+├── __main__.py             # python -m repotrail 启动入口
+├── cli.py                  # 命令行参数、结果与错误展示
+└── analysis/
+    ├── __init__.py
+    ├── scanner.py          # 文件扫描与基础过滤
+    ├── languages.py        # 候选语言识别
+    ├── python_parser.py    # Python 定义、归属与源码位置
+    ├── graph.py            # 单文件包含关系图
+    └── repository.py       # 目录分析编排与结果状态
+```
+
+分析模块统一位于 `repotrail.analysis` 下，例如：
+
+```python
+from repotrail.analysis.repository import analyze_repository
+```
+
+命令入口仍为 `repotrail.cli:main`，测试文件集中保留在 `tests/` 中。
 
 ## 安装与运行
 
@@ -32,8 +56,10 @@ python -m pip install -e .
 repotrail --help
 repotrail scan src/repotrail
 repotrail scan src/repotrail --show-language
-repotrail parse src/repotrail/python_parser.py
-repotrail parse src/repotrail/python_parser.py --qualified-names
+repotrail parse src/repotrail/analysis/python_parser.py
+repotrail parse src/repotrail/analysis/python_parser.py --qualified-names
+repotrail parse src/repotrail/analysis/python_parser.py --format json
+repotrail graph src/repotrail/analysis/python_parser.py
 ```
 
 `--show-language` 用制表符分隔候选语言与相对路径，保持按路径排序；
@@ -49,6 +75,10 @@ repotrail parse src/repotrail/python_parser.py --qualified-names
 `--qualified-names` 将名称列切换为包含外层类、函数的限定名，例如 `Service.run`；不带开关时仍显示 `run`。
 模块级定义的 `scope` 为空、`parent_name` 为 `None`；内部定义记录外层名称，控制流节点不会增加定义归属层级。
 限定名只表达嵌套归属，同一作用域内重复定义仍可能同名，因此不能直接作为唯一节点 ID。
+
+`parse --format json` 输出文件路径、语言及定义列表；`graph` 输出节点和包含边。
+成功时 JSON 输出不附加文本统计，失败时错误写入标准错误。
+图谱节点 ID 用于本次分析结果，不承诺跨源码修改保持稳定。
 
 运行全部测试：
 

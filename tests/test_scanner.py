@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from repotrail.scanner import scan_files
+from repotrail.analysis.scanner import scan_files
 
 
 class ScanFilesTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 import unittest
 
-from repotrail.python_parser import Symbol, extract_python_symbols
+from repotrail.analysis.python_parser import Symbol, extract_python_symbols
 
 
 class ExtractPythonSymbolsTests(unittest.TestCase):

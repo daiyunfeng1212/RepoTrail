@@ -3,8 +3,8 @@
 import unittest
 from pathlib import Path
 
-from repotrail.graph import build_file_graph
-from repotrail.python_parser import extract_python_symbols
+from repotrail.analysis.graph import build_file_graph
+from repotrail.analysis.python_parser import extract_python_symbols
 
 
 class BuildFileGraphTests(unittest.TestCase):

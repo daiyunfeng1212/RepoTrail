@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from typing import TextIO
 from unittest.mock import patch
 
-from repotrail.repository import analyze_repository
+from repotrail.analysis.repository import analyze_repository
 
 
 class AnalyzeRepositoryTests(unittest.TestCase):
@@ -153,7 +153,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 
             # 仅模拟一个文件无法读取，避免依赖当前用户的实际权限。
             with patch(
-                "repotrail.repository.tokenize.open",
+                "repotrail.analysis.repository.tokenize.open",
                 side_effect=open_source,
             ):
                 result = analyze_repository(root)

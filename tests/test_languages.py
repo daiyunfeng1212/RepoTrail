@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from repotrail.languages import detect_language
+from repotrail.analysis.languages import detect_language
+
 
 class DetectLanguageTests(unittest.TestCase):
     def test_recognizes_language_aliases(self)->None:

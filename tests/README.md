@@ -27,6 +27,17 @@ python -m unittest discover -s tests -p "test_scanner.py" -v
 可编辑安装后，Python 可以找到 `repotrail` 包，无需设置 `PYTHONPATH`。
 `-v` 显示每个测试用例的名称和执行结果。
 
+## 模块导入
+
+分析代码统一位于 `src/repotrail/analysis/`，测试通过新包路径导入，例如：
+
+```python
+from repotrail.analysis.python_parser import extract_python_symbols
+```
+
+模拟文件读取的目标也使用对应模块路径：`repotrail.analysis.repository.tokenize.open`。
+测试文件继续保留在当前目录，原有发现命令不变。
+
 ## 当前测试范围
 
 `test_scanner.py` 验证 `scan_files()`：
@@ -48,6 +59,12 @@ python -m unittest discover -s tests -p "test_scanner.py" -v
 
 `test_python_parser.py` 验证类、方法、嵌套和装饰定义的提取，UTF-8 名称与行号，无定义结果及解析错误时拒绝部分结果。
 还验证所属定义与限定名、同名定义的归属区分，以及控制流节点不增加定义归属层级。
+
+`test_graph.py` 验证嵌套与同级定义的包含边、同名定义的独立节点和父节点，以及空定义列表的文件节点。
+
+`test_repository.py` 验证混合文件状态、空目录、无效根目录、编码错误、单文件读取失败后的继续分析，以及扫描过滤规则复用。
+
+命令行测试还覆盖定义 JSON、图谱 JSON、中文输出、空结果和失败时不输出部分结果。
 
 ## 测试约定
 

@@ -7,10 +7,11 @@ import tokenize
 from pathlib import Path
 
 from repotrail import __version__
-from repotrail.graph import build_file_graph
-from repotrail.languages import detect_language
-from repotrail.python_parser import extract_python_symbols
-from repotrail.scanner import scan_files
+from repotrail.analysis.graph import build_file_graph
+from repotrail.analysis.languages import detect_language
+from repotrail.analysis.python_parser import extract_python_symbols
+from repotrail.analysis.scanner import scan_files
+
 
 def main(argv: list[str] | None = None) -> int:
     """运行 CLI：成功返回 0，读取或分析失败返回 1。

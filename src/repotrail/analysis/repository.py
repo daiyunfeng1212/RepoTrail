@@ -4,10 +4,10 @@ import tokenize
 from pathlib import Path
 from typing import Literal, TypedDict
 
-from repotrail.graph import FileGraph, build_file_graph
-from repotrail.languages import detect_language
-from repotrail.python_parser import extract_python_symbols
-from repotrail.scanner import scan_files
+from repotrail.analysis.graph import FileGraph, build_file_graph
+from repotrail.analysis.languages import detect_language
+from repotrail.analysis.python_parser import extract_python_symbols
+from repotrail.analysis.scanner import scan_files
 
 
 class FileAnalysis(TypedDict):

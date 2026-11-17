@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal, TypedDict
 
-from repotrail.python_parser import Symbol
+from repotrail.analysis.python_parser import Symbol
 
 
 class GraphNode(TypedDict):
