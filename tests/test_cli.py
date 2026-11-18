@@ -36,6 +36,8 @@ class CliTests(unittest.TestCase):
             ["scan", "--help"],
             ["parse", "--help"],
             ["graph", "--help"],
+            ["analyze", "--help"],
+            ["imports", "--help"],
         ):
             with self.subTest(args=args):
                 result = self.run_cli(args)
@@ -58,6 +60,8 @@ class CliTests(unittest.TestCase):
             ["scan"],
             ["parse"],
             ["graph"],
+            ["analyze"],
+            ["imports"],
             ["unknown"],
             ["parse", "sample.py", "--format", "yaml"],
         ):
@@ -410,3 +414,127 @@ class CliTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 1)
                     self.assertIn("解析失败：", result.stderr)
                     self.assertEqual(result.stdout, "")
+
+    def test_imports_exports_declarations_without_loading_modules(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "module.py"
+            path.write_text(
+                "import os, package.missing as unavailable\n"
+                "from ..utils import load as read\n"
+                "from . import config\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(["imports", str(path)])
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(
+                json.loads(result.stdout),
+                {
+                    "file": path.absolute().as_posix(),
+                    "language": "python",
+                    "imports": [
+                        {"module": "os", "name": None, "alias": None, "level": 0, "line": 1},
+                        {
+                            "module": "package.missing",
+                            "name": None,
+                            "alias": "unavailable",
+                            "level": 0,
+                            "line": 1,
+                        },
+                        {
+                            "module": "utils",
+                            "name": "load",
+                            "alias": "read",
+                            "level": 2,
+                            "line": 2,
+                        },
+                        {
+                            "module": None,
+                            "name": "config",
+                            "alias": None,
+                            "level": 1,
+                            "line": 3,
+                        },
+                    ],
+                },
+            )
+
+    def test_imports_returns_empty_list_without_static_declarations(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "module.py"
+            path.write_text(
+                '# import os\ntext = "from x import y"\n__import__("os")\n',
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(["imports", str(path)])
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(json.loads(result.stdout)["imports"], [])
+
+    def test_imports_reports_invalid_input_without_partial_json(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "broken.py").write_text("import os\ndef bad(:\n", encoding="utf-8")
+            (root / "module.txt").write_text("import os\n", encoding="utf-8")
+
+            for name in ("broken.py", "missing.py", "module.txt"):
+                with self.subTest(name=name):
+                    result = self.run_cli(["imports", str(root / name)])
+
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("解析失败：", result.stderr)
+
+    def test_analyze_exports_report_with_mixed_file_statuses(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "broken.py").write_text("def bad(:\n", encoding="utf-8")
+            (root / "module.py").write_text("def run(): pass\n", encoding="utf-8")
+            (root / "notes.md").write_text("# Notes\n", encoding="utf-8")
+
+            result = self.run_cli(["analyze", str(root)])
+
+            # 即使一个文件解析失败，调用方仍应收到完整的目录报告。
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            report = json.loads(result.stdout)
+            self.assertEqual(report["root"], root.absolute().as_posix())
+            self.assertEqual(
+                [(item["path"], item["status"]) for item in report["files"]],
+                [
+                    ("broken.py", "failed"),
+                    ("module.py", "parsed"),
+                    ("notes.md", "unsupported"),
+                ],
+            )
+            broken, module, _ = report["files"]
+            self.assertTrue(broken["message"])
+            self.assertEqual(module["graph"]["nodes"][1]["name"], "run")
+
+    def test_analyze_returns_empty_report_for_empty_directory(self) -> None:
+        with TemporaryDirectory() as directory:
+            result = self.run_cli(["analyze", directory])
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(json.loads(result.stdout)["files"], [])
+
+    def test_analyze_reports_invalid_directory_on_stderr(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            file_path = root / "module.py"
+            file_path.touch()
+
+            for target in (root / "missing", file_path):
+                with self.subTest(target=target.name):
+                    result = self.run_cli(["analyze", str(target)])
+
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("目录分析失败：", result.stderr)
+                    self.assertIn(target.name, result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)

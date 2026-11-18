@@ -1,6 +1,10 @@
 import unittest
 
-from repotrail.analysis.python_parser import Symbol, extract_python_symbols
+from repotrail.analysis.python_parser import (
+    Symbol,
+    extract_python_imports,
+    extract_python_symbols,
+)
 
 
 class ExtractPythonSymbolsTests(unittest.TestCase):
@@ -101,5 +105,34 @@ class ExtractPythonSymbolsTests(unittest.TestCase):
                 ("outer", None),
                 ("outer.Local", "outer"),
                 ("outer.Local.run", "outer.Local"),
+            ],
+        )
+
+
+class ExtractPythonImportsTests(unittest.TestCase):
+    def test_handles_nested_imports_multiline_lists_and_unicode(self) -> None:
+        source = (
+            "from __future__ import annotations\n"
+            "from ...包 . 工具 import (\n"
+            "    读取 as 读, # 导入项的行号取语句起始行\n"
+            "    写入,\n"
+            ")\n"
+            "from package import *\n"
+            "def run():\n"
+            "    if enabled:\n"
+            "        import package \\\n"
+            "            . sub\n"
+        )
+
+        imports = extract_python_imports(source)
+
+        self.assertEqual(
+            [(i["module"], i["name"], i["alias"], i["level"], i["line"]) for i in imports],
+            [
+                ("__future__", "annotations", None, 0, 1),
+                ("包.工具", "读取", "读", 3, 2),
+                ("包.工具", "写入", None, 3, 2),
+                ("package", "*", None, 0, 6),
+                ("package.sub", None, None, 0, 9),
             ],
         )

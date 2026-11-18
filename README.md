@@ -4,41 +4,14 @@
 
 首版范围与验收标准已于 2026-11-15 确认，以 [需求分析](docs/requirements.md) 为准；其中列出的能力仍是待实现目标。
 
-## 当前状态
+## 目前可用
 
-- 已实现 Python 命令行入口、目录扫描与基础过滤。
-- 支持按扩展名识别候选语言，并通过 `--show-language` 展示。
-- 已添加扫描、语言识别和命令行集成测试。
-- 已接入 Tree-sitter，支持提取 Python 类与函数定义，包括方法、异步和嵌套函数，返回名称、类型和源码行号。
-- 支持通过 `parse <文件>` 分析单个 Python 文件，遵循源码编码声明读取内容。
-- 提取结果包含定义归属，可通过 `--qualified-names` 展示类、函数的限定名。
-- 已实现单文件结构图构建函数，生成文件、类、函数节点及包含边，可通过 `graph <文件>` 输出 JSON。
-- 已实现目录分析函数，分别记录文件的分析成功、结构分析未支持和分析失败状态，目录分析命令尚未接入。
-- 导入与调用关系分析、模型接入和浏览器图谱展示仍待实现。
-
-## 代码结构
-
-```text
-src/repotrail/
-├── __init__.py             # 项目版本
-├── __main__.py             # python -m repotrail 启动入口
-├── cli.py                  # 命令行参数、结果与错误展示
-└── analysis/
-    ├── __init__.py
-    ├── scanner.py          # 文件扫描与基础过滤
-    ├── languages.py        # 候选语言识别
-    ├── python_parser.py    # Python 定义、归属与源码位置
-    ├── graph.py            # 单文件包含关系图
-    └── repository.py       # 目录分析编排与结果状态
-```
-
-分析模块统一位于 `repotrail.analysis` 下，例如：
-
-```python
-from repotrail.analysis.repository import analyze_repository
-```
-
-命令入口仍为 `repotrail.cli:main`，测试文件集中保留在 `tests/` 中。
+- `scan <目录>` 扫描候选文件，可显示按扩展名推断的语言。
+- `parse <文件>` 使用 Tree-sitter 提取 Python 类、函数、嵌套归属和行号。
+- `graph <文件>` 输出单文件包含图。Python API `get_children()` 支持逐层查询直接子节点。
+- `analyze <目录>` 输出逐文件的分析状态和已成功解析的 Python 文件图谱。
+- `imports <文件>` 输出 Python 源码中的静态导入声明及行号。
+- 跨文件依赖与调用关系分析、模型接入和浏览器图谱展示仍待实现。
 
 ## 安装与运行
 
@@ -60,6 +33,8 @@ repotrail parse src/repotrail/analysis/python_parser.py
 repotrail parse src/repotrail/analysis/python_parser.py --qualified-names
 repotrail parse src/repotrail/analysis/python_parser.py --format json
 repotrail graph src/repotrail/analysis/python_parser.py
+repotrail analyze src/repotrail/analysis
+repotrail imports src/repotrail/analysis/repository.py
 ```
 
 `--show-language` 用制表符分隔候选语言与相对路径，保持按路径排序；
@@ -80,6 +55,22 @@ repotrail graph src/repotrail/analysis/python_parser.py
 成功时 JSON 输出不附加文本统计，失败时错误写入标准错误。
 图谱节点 ID 用于本次分析结果，不承诺跨源码修改保持稳定。
 
+`analyze` 把 JSON 报告写到标准输出。`root` 是分析目录的绝对路径，`files` 按相对路径排序，每条记录含路径、候选语言、状态、图谱和说明。空目录的 `files` 是空列表。
+
+退出码 `0` 表示已生成报告。查看文件的 `status` 可区分成功解析（`parsed`）、暂不支持（`unsupported`）和单文件失败（`failed`）。整个目录无法扫描时，仅向标准错误输出原因并返回 `1`。参数用法错误返回 `2`。
+
+`imports` 从 `.py` 文件读取静态导入声明，输出含绝对路径 `file`、`language` 和 `imports` 列表的 JSON。逗号分隔的导入项各占一条记录，按源码顺序排列。每条记录的字段约定如下。
+
+| 字段 | 含义 |
+| --- | --- |
+| `module` | 声明中的模块名。`from . import name` 没有显式模块名，值为 `null`。 |
+| `name` | `from` 语句要导入的名称。通配符用 `"*"`，直接导入模块时为 `null`。 |
+| `alias` | `as` 声明的别名，无别名时为 `null`。 |
+| `level` | 相对导入的前导点号数量，绝对导入为 `0`。 |
+| `line` | 导入语句起始行，从 `1` 开始。 |
+
+提取范围包括函数与条件块中的导入声明。模块定位、动态导入与运行时可达性属于后续分析。无静态导入时成功输出空列表。读取、编码或语法树解析失败时向标准错误输出原因，标准输出为空，退出码为 `1`。参数用法错误返回 `2`。
+
 运行全部测试：
 
 ```bash
@@ -95,17 +86,7 @@ python -m unittest discover -s tests -v
 - 测试：优先使用标准库 `unittest`。
 - 后端与界面：需要浏览器交互时再评估 FastAPI，以及 React + TypeScript 前端。
 
-Tree-sitter 与 Python 语法包已引入；其他能力按需推进。默认由开发者手写核心代码，教程提供完整示例、讲解、验证方式和 Git 提交参考。
-
-## 历史备份
-
-切换路线前已将最新 Python 代码、测试及相关文档备份至 `docs/tmp/python-before-typescript-2026-11-13-d32d3bb4.zip`，后续可从中选择恢复最小入口或参考已验证的行为。
-
-该备份目录被 Git 忽略，只保存在本地；此前的历史备份也继续保留。备份不包含可重新创建的虚拟环境。
-
 ## 后续迭代顺序
-
-以下均为规划，每轮只完成一个可独立验证的小步骤：
 
 1. 扩展 Python 信息提取与文件间关系分析。
 2. 设计最小节点、关系结构，保存并查询已提取的信息。
@@ -114,13 +95,4 @@ Tree-sitter 与 Python 语法包已引入；其他能力按需推进。默认由
 
 语言选择不限制待分析代码的语言范围；多语言解析需要逐种实现和验证。静态关系与实际运行轨迹分别设计。
 
-## 保留资料
-
-- `AGENTS.md`：开发和教学协作约定。
-- `docs/requirements.md`：已确认的首版需求与验收标准，纳入版本管理。
-- `docs/idea.md`：产品构想笔记。
-- `docs/architecture.md`：当前状态和后续模块边界。
-- `examples/order_flow.py`：未来解析器的 Python 输入样例，说明见 `examples/README.md`。
-- `tests/README.md`：测试目录当前状态及后续约定。
-
-部分本地资料按现有 `.gitignore` 配置忽略，不会自动进入 Git 提交。
+源码组织见 [架构说明](docs/architecture.md)，测试范围见 [测试说明](tests/README.md)。

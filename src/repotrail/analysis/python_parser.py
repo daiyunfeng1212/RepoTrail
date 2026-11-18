@@ -1,10 +1,10 @@
-"""提取 Python 定义、嵌套归属和源码位置。"""
+"""提取 Python 定义、导入声明和源码位置。"""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypedDict
 
 import tree_sitter_python
-from tree_sitter import Language, Node, Parser
+from tree_sitter import Language, Node, Parser, Tree
 
 
 @dataclass
@@ -34,6 +34,39 @@ class Symbol:
         return ".".join(self.scope) if self.scope else None
 
 
+class PythonImport(TypedDict):
+    """一个导入项及其语句起始行。level 表示相对导入的前导点号数量。"""
+
+    module: str | None
+    name: str | None
+    alias: str | None
+    level: int
+    line: int
+
+
+def _parse_python(source_bytes: bytes) -> Tree:
+    """解析 UTF-8 源码。遇到语法树错误时拒绝输出部分结果。"""
+    parser = Parser(Language(tree_sitter_python.language()))
+    tree = parser.parse(source_bytes)
+    if tree.root_node.has_error:
+        raise SyntaxError("Tree-sitter 检测到Python源码解析错误")
+    return tree
+
+
+def _node_text(node: Node, source_bytes: bytes) -> str:
+    # Tree-sitter 的偏移量以字节计数，按字节截取可保留 Unicode 名称。
+    return source_bytes[node.start_byte : node.end_byte].decode("utf-8")
+
+
+def _dotted_name(node: Node, source_bytes: bytes) -> str:
+    # 按标识符拼接，避免把点号周围的空格或续行符算进模块名。
+    return ".".join(
+        _node_text(child, source_bytes)
+        for child in node.named_children
+        if child.type == "identifier"
+    )
+
+
 def extract_python_symbols(source: str) -> list[Symbol]:
     """按源码提取类、函数、方法及嵌套定义。
 
@@ -41,16 +74,8 @@ def extract_python_symbols(source: str) -> list[Symbol]:
     定义范围从class、def或async def所在行开始，不包含装饰器。
     Tree-sitter 检测到解析错误时抛出SyntaxError,不返回部分结果。
     """
-    language = Language(tree_sitter_python.language())
-
-    parser = Parser(language)
-
     source_bytes = source.encode("utf-8")
-    tree = parser.parse(source_bytes)
-
-    # 检查错误标记
-    if tree.root_node.has_error:
-        raise SyntaxError("Tree-sitter 检测到Python源码解析错误")
+    tree = _parse_python(source_bytes)
 
     symbols: list[Symbol] = []
     # 每个待处理项同时保存节点及它所处的定义作用域。
@@ -67,10 +92,7 @@ def extract_python_symbols(source: str) -> list[Symbol]:
             if name_node is None:
                 raise RuntimeError("Tree-sitter 定义节点缺少name字段")
 
-            # 先截取 bytes,再解码，才能正确处理中文等多字节字符
-            name = source_bytes[name_node.start_byte : name_node.end_byte].decode(
-                "utf-8"
-            )
+            name = _node_text(name_node, source_bytes)
 
             # end_point 表示不包含在节点中的结束位置
             end_line = node.end_point.row + 1
@@ -94,3 +116,69 @@ def extract_python_symbols(source: str) -> list[Symbol]:
         pending.extend((child, child_scope) for child in reversed(node.named_children))
 
     return symbols
+
+
+def extract_python_imports(source: str) -> list[PythonImport]:
+    """按源码顺序提取静态导入，每个模块或名称对应一条记录。
+
+    `import` 的 name 为空，`from . import` 的 module 为空。函数体和条件块
+    内的导入同样记录。分析仅使用语法树，解析错误时抛出 SyntaxError。
+    """
+    source_bytes = source.encode("utf-8")
+    tree = _parse_python(source_bytes)
+    imports: list[PythonImport] = []
+    pending = [tree.root_node]
+
+    while pending:
+        node = pending.pop()
+        if node.type not in (
+            "import_statement",
+            "import_from_statement",
+            "future_import_statement",
+        ):
+            pending.extend(reversed(node.named_children))
+            continue
+
+        direct = node.type == "import_statement"
+        level = 0
+        module = "__future__" if node.type == "future_import_statement" else None
+        module_node = node.child_by_field_name("module_name")
+        if module_node is not None:
+            if module_node.type == "relative_import":
+                for child in module_node.named_children:
+                    if child.type == "import_prefix":
+                        level = sum(token.type == "." for token in child.children)
+                    elif child.type == "dotted_name":
+                        module = _dotted_name(child, source_bytes)
+            else:
+                module = _dotted_name(module_node, source_bytes)
+
+        targets = node.children_by_field_name("name")
+        # 语法树给普通导入项标注 name 字段，通配符单独使用节点类型。
+        targets.extend(
+            child for child in node.named_children if child.type == "wildcard_import"
+        )
+        for target in targets:
+            alias = None
+            if target.type == "aliased_import":
+                alias_node = target.child_by_field_name("alias")
+                name_node = target.child_by_field_name("name")
+                if alias_node is None or name_node is None:
+                    raise RuntimeError("Tree-sitter 导入别名缺少名称或别名字段")
+                alias = _node_text(alias_node, source_bytes)
+                target = name_node
+
+            imported = (
+                "*" if target.type == "wildcard_import" else _dotted_name(target, source_bytes)
+            )
+            imports.append(
+                PythonImport(
+                    module=imported if direct else module,
+                    name=None if direct else imported,
+                    alias=alias,
+                    level=level,
+                    line=node.start_point.row + 1,
+                )
+            )
+
+    return imports

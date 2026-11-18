@@ -62,9 +62,15 @@ from repotrail.analysis.python_parser import extract_python_symbols
 
 `test_graph.py` 验证嵌套与同级定义的包含边、同名定义的独立节点和父节点，以及空定义列表的文件节点。
 
+`test_query.py` 验证直接子节点查询、边顺序、同名节点区分、叶节点和未知 ID。
+
 `test_repository.py` 验证混合文件状态、空目录、无效根目录、编码错误、单文件读取失败后的继续分析，以及扫描过滤规则复用。
 
 命令行测试还覆盖定义 JSON、图谱 JSON、中文输出、空结果和失败时不输出部分结果。
+
+`analyze` 的命令行测试验证混合目录的可读 JSON、空目录报告、无效路径在标准错误输出原因，以及帮助和缺少目录参数的退出码。
+
+`imports` 的命令行测试验证普通导入、别名、相对层级、空结果及无效输入的输出与退出码。解析器测试覆盖多行与嵌套导入、Unicode 名称、通配符和 `__future__`。
 
 ## 测试约定
 

@@ -1,4 +1,4 @@
-"""处理命令行参数，调用扫描和 Python 定义提取功能。"""
+"""处理命令行参数，调用源码提取和目录分析。"""
 
 import argparse
 import json
@@ -9,7 +9,11 @@ from pathlib import Path
 from repotrail import __version__
 from repotrail.analysis.graph import build_file_graph
 from repotrail.analysis.languages import detect_language
-from repotrail.analysis.python_parser import extract_python_symbols
+from repotrail.analysis.python_parser import (
+    extract_python_imports,
+    extract_python_symbols,
+)
+from repotrail.analysis.repository import analyze_repository
 from repotrail.analysis.scanner import scan_files
 
 
@@ -95,6 +99,18 @@ def main(argv: list[str] | None = None) -> int:
         help="要分析的 .py 文件路径。",
     )
 
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="分析目录并输出包含逐文件状态的 JSON 报告。",
+    )
+    analyze_parser.add_argument("path", type=Path, help="要分析的目录路径。")
+
+    imports_parser = subparsers.add_parser(
+        "imports",
+        help="提取 Python 文件中的导入声明并输出 JSON。",
+    )
+    imports_parser.add_argument("path", type=Path, help="要分析的 .py 文件路径。")
+
     # 解析参数
     args = parser.parse_args(argv)
 
@@ -125,8 +141,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"共{len(files)}个文件。")
         return 0
 
-    # scan 已在上方处理并返回。
-    # parse 和 graph 共享下面的源码读取、定义提取流程。 
+    if args.command == "analyze":
+        try:
+            report = analyze_repository(args.path)
+        except OSError as error:
+            print(f"目录分析失败：{error}", file=sys.stderr)
+            return 1
+
+        # 退出码表示报告是否生成，单个文件的错误由报告中的状态表示。
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
+    # 单文件命令共享文件类型检查、源码读取和输入错误处理。
     # 分类决定能否选择 Python 解析器，读取和解析阶段再检查实际内容。
     if detect_language(args.path) != "python":
         print("解析失败：目前仅支持扩展名为 .py 的 Python 文件。", file=sys.stderr)
@@ -137,12 +163,24 @@ def main(argv: list[str] | None = None) -> int:
         # with 保证读取完成或发生异常时，文件句柄都会关闭。
         with tokenize.open(args.path) as source_file:
             source = source_file.read()
-        symbols = extract_python_symbols(source)
+        if args.command == "imports":
+            imports = extract_python_imports(source)
+        else:
+            symbols = extract_python_symbols(source)
     except (OSError, SyntaxError, UnicodeError) as error:
         # 覆盖文件系统错误、编码声明或解析错误，以及文本解码错误。
         # 预期输入错误转为提示，其他编程错误继续抛出。
         print(f"解析失败：{error}", file=sys.stderr)
         return 1
+
+    if args.command == "imports":
+        import_report = {
+            "file": args.path.absolute().as_posix(),
+            "language": "python",
+            "imports": imports,
+        }
+        print(json.dumps(import_report, ensure_ascii=False, indent=2))
+        return 0
 
     if args.command == "graph":
         graph = build_file_graph(args.path,symbols)
