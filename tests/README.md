@@ -64,6 +64,8 @@ from repotrail.analysis.python_parser import extract_python_symbols
 
 `test_query.py` 验证直接子节点查询、边顺序、同名节点区分、叶节点和未知 ID。
 
+`test_import_resolution.py` 验证同包和上级包的相对导入、包入口优先级，以及缺失目标、越界和有歧义的导入。
+
 `test_repository.py` 验证混合文件状态、空目录、无效根目录、编码错误、单文件读取失败后的继续分析，以及扫描过滤规则复用。
 
 命令行测试还覆盖定义 JSON、图谱 JSON、中文输出、空结果和失败时不输出部分结果。
