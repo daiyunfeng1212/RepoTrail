@@ -11,8 +11,8 @@
 - `graph <文件>` 输出单文件包含图。Python API `get_children()` 支持逐层查询直接子节点。
 - `analyze <目录>` 输出逐文件的分析状态和已成功解析的 Python 文件图谱。
 - `imports <文件>` 输出 Python 源码中的静态导入声明及行号。
-- Python API `resolve_relative_import()` 能从文件清单定位相对导入的来源模块。命令行报告与图谱接入待实现。
-- 跨文件依赖与调用关系分析、模型接入和浏览器图谱展示仍待实现。
+- `analyze <目录> --dependencies` 定位 Python 静态导入的本地目标文件，输出依赖边和未解析声明。
+- 符号调用关系分析、模型接入和浏览器图谱展示仍待实现。
 
 ## 安装与运行
 
@@ -35,6 +35,7 @@ repotrail parse src/repotrail/analysis/python_parser.py --qualified-names
 repotrail parse src/repotrail/analysis/python_parser.py --format json
 repotrail graph src/repotrail/analysis/python_parser.py
 repotrail analyze src/repotrail/analysis
+repotrail analyze src --dependencies
 repotrail imports src/repotrail/analysis/repository.py
 ```
 
@@ -59,6 +60,17 @@ repotrail imports src/repotrail/analysis/repository.py
 `analyze` 把 JSON 报告写到标准输出。`root` 是分析目录的绝对路径，`files` 按相对路径排序，每条记录含路径、候选语言、状态、图谱和说明。空目录的 `files` 是空列表。
 
 退出码 `0` 表示已生成报告。查看文件的 `status` 可区分成功解析（`parsed`）、暂不支持（`unsupported`）和单文件失败（`failed`）。整个目录无法扫描时，仅向标准错误输出原因并返回 `1`。参数用法错误返回 `2`。
+
+带上 `--dependencies` 时，分析目录同时作为 Python 导入根目录。采用 `src` 布局的项目应传入 `src`。报告增加 `dependencies`，两组记录都按文件路径及声明顺序排列。
+
+| 字段 | 含义 |
+| --- | --- |
+| `edges` | 已定位的导入边，含 `source`、`target`、`kind: "imports"` 和 `declaration`。端点使用 `files[].path`。 |
+| `unresolved` | 扫描范围内找不到目标文件的导入，含 `source` 和 `declaration`。 |
+
+`declaration` 复用下方 `imports` 的字段，包含可回溯的源码行号。每个导入项单独记录。解析失败的源文件保留 `failed`，其余文件继续分析。目标路径可定位时仍记录依赖边，目标文件的解析状态见 `files`。
+
+分析以已扫描的文件为依据。标准库和外部依赖在扫描范围内找不到目标时进入 `unresolved`，报告仍返回退出码 `0`。对于 `from pkg import name`，只定位声明中的来源模块 `pkg`。动态导入、符号绑定和运行时加载顺序超出当前范围。
 
 `imports` 从 `.py` 文件读取静态导入声明，输出含绝对路径 `file`、`language` 和 `imports` 列表的 JSON。逗号分隔的导入项各占一条记录，按源码顺序排列。每条记录的字段约定如下。
 

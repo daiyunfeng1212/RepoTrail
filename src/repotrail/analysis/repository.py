@@ -1,12 +1,17 @@
-"""协调目录扫描、语言识别和单文件结构分析。"""
+"""协调目录扫描、文件结构分析和跨文件依赖分析。"""
 
 import tokenize
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from repotrail.analysis.graph import FileGraph, build_file_graph
+from repotrail.analysis.import_resolution import resolve_import
 from repotrail.analysis.languages import detect_language
-from repotrail.analysis.python_parser import extract_python_symbols
+from repotrail.analysis.python_parser import (
+    PythonImport,
+    extract_python_structure,
+    extract_python_symbols,
+)
 from repotrail.analysis.scanner import scan_files
 
 
@@ -25,18 +30,47 @@ class FileAnalysis(TypedDict):
     message: str | None
 
 
+class ImportEdge(TypedDict):
+    """有源码导入声明作为证据的文件依赖边。端点均为相对路径。"""
+
+    source: str
+    target: str
+    kind: Literal["imports"]
+    declaration: PythonImport
+
+
+class UnresolvedImport(TypedDict):
+    """无法在扫描范围内定位来源模块的导入声明。"""
+
+    source: str
+    declaration: PythonImport
+
+
+class ImportDependencies(TypedDict):
+    """按文件及源码顺序排列的已定位依赖与未解析声明。"""
+
+    edges: list[ImportEdge]
+    unresolved: list[UnresolvedImport]
+
+
 class RepositoryAnalysis(TypedDict):
     """一次目录分析结果，文件记录保持扫描器给出的路径顺序。"""
 
     root: str
     files: list[FileAnalysis]
+    dependencies: NotRequired[ImportDependencies]
 
 
-def analyze_repository(root: Path) -> RepositoryAnalysis:
+def analyze_repository(
+    root: Path,
+    *,
+    include_dependencies: bool = False,
+) -> RepositoryAnalysis:
     """顺序分析目录中的文件，不修改或执行源码。
 
     Python 文件生成结构图。
     其他类型保留记录，标记为结构分析未支持。
+    include_dependencies 启用静态导入分析，以 root 作为 Python 导入根目录。
 
     单文件读取、编码或解析失败会记录原因并继续。
     根目录无效或扫描失败时，向调用方传播文件系统异常。
@@ -47,6 +81,10 @@ def analyze_repository(root: Path) -> RepositoryAnalysis:
     paths = scan_files(root)
 
     files: list[FileAnalysis] = []
+    dependencies: ImportDependencies | None = None
+    if include_dependencies:
+        dependencies = {"edges": [], "unresolved": []}
+    indexed_files = set(paths) if include_dependencies else set()
 
     for relative_path in paths:
         language = detect_language(relative_path)
@@ -68,7 +106,11 @@ def analyze_repository(root: Path) -> RepositoryAnalysis:
                 with tokenize.open(path) as source_file:
                     source = source_file.read()
 
-                symbols = extract_python_symbols(source)
+                if dependencies is None:
+                    symbols = extract_python_symbols(source)
+                    imports = []
+                else:
+                    symbols, imports = extract_python_structure(source)
 
             except (OSError, SyntaxError, UnicodeError) as error:
                 # 只处理预期的单文件输入错误。
@@ -85,9 +127,29 @@ def analyze_repository(root: Path) -> RepositoryAnalysis:
                 record["status"] = "parsed"
                 record["message"] = None
 
+                if dependencies is not None:
+                    for declaration in imports:
+                        target = resolve_import(relative_path, declaration, indexed_files)
+                        if target is None:
+                            dependencies["unresolved"].append(
+                                {"source": record["path"], "declaration": declaration}
+                            )
+                        else:
+                            dependencies["edges"].append(
+                                {
+                                    "source": record["path"],
+                                    "target": target.as_posix(),
+                                    "kind": "imports",
+                                    "declaration": declaration,
+                                }
+                            )
+
         files.append(record)
 
-    return {
+    report: RepositoryAnalysis = {
         "root": root.as_posix(),
         "files": files,
     }
+    if dependencies is not None:
+        report["dependencies"] = dependencies
+    return report

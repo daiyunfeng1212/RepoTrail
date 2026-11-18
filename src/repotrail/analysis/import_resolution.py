@@ -1,9 +1,26 @@
-"""根据已扫描的文件定位 Python 相对导入的来源模块。"""
+"""根据已扫描的文件定位 Python 静态导入的来源模块。"""
 
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 from repotrail.analysis.python_parser import PythonImport
+
+
+def resolve_import(
+    source_file: Path,
+    declaration: PythonImport,
+    indexed_files: AbstractSet[Path],
+) -> Path | None:
+    """定位静态导入的本地来源文件，无法定位时返回 None。
+
+    源文件和清单均使用相对于同一 Python 导入根目录的路径。
+    绝对导入从该根目录查找，相对导入根据源文件所在的包查找。
+    """
+    if declaration["level"]:
+        return resolve_relative_import(source_file, declaration, indexed_files)
+
+    module = declaration["module"]
+    return _find_module(Path(), module, indexed_files) if module else None
 
 
 def resolve_relative_import(
@@ -29,6 +46,14 @@ def resolve_relative_import(
         initializer = package / "__init__.py"
         return initializer if initializer in indexed_files else None
 
+    return _find_module(package, module, indexed_files)
+
+
+def _find_module(
+    package: Path,
+    module: str,
+    indexed_files: AbstractSet[Path],
+) -> Path | None:
     parts = module.split(".")
     for part in parts[:-1]:
         package = package / part

@@ -104,6 +104,11 @@ def main(argv: list[str] | None = None) -> int:
         help="分析目录并输出包含逐文件状态的 JSON 报告。",
     )
     analyze_parser.add_argument("path", type=Path, help="要分析的目录路径。")
+    analyze_parser.add_argument(
+        "--dependencies",
+        action="store_true",
+        help="以分析目录为 Python 导入根目录，报告静态文件依赖及未解析导入。",
+    )
 
     imports_parser = subparsers.add_parser(
         "imports",
@@ -143,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "analyze":
         try:
-            report = analyze_repository(args.path)
+            report = analyze_repository(args.path, include_dependencies=args.dependencies)
         except OSError as error:
             print(f"目录分析失败：{error}", file=sys.stderr)
             return 1

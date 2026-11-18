@@ -75,11 +75,13 @@ def extract_python_symbols(source: str) -> list[Symbol]:
     Tree-sitter 检测到解析错误时抛出SyntaxError,不返回部分结果。
     """
     source_bytes = source.encode("utf-8")
-    tree = _parse_python(source_bytes)
+    return _extract_symbols(_parse_python(source_bytes).root_node, source_bytes)
 
+
+def _extract_symbols(root: Node, source_bytes: bytes) -> list[Symbol]:
     symbols: list[Symbol] = []
     # 每个待处理项同时保存节点及它所处的定义作用域。
-    pending: list[tuple[Node, tuple[str, ...]]] = [(tree.root_node, ())]
+    pending: list[tuple[Node, tuple[str, ...]]] = [(root, ())]
 
     while pending:
         node, scope = pending.pop()
@@ -125,9 +127,22 @@ def extract_python_imports(source: str) -> list[PythonImport]:
     内的导入同样记录。分析仅使用语法树，解析错误时抛出 SyntaxError。
     """
     source_bytes = source.encode("utf-8")
-    tree = _parse_python(source_bytes)
+    return _extract_imports(_parse_python(source_bytes).root_node, source_bytes)
+
+
+def extract_python_structure(source: str) -> tuple[list[Symbol], list[PythonImport]]:
+    """从同一棵语法树提取定义和静态导入，保持各自的源码顺序。
+
+    输入为已解码的 Python 源码。语法树存在解析错误时抛出 SyntaxError。
+    """
+    source_bytes = source.encode("utf-8")
+    root = _parse_python(source_bytes).root_node
+    return _extract_symbols(root, source_bytes), _extract_imports(root, source_bytes)
+
+
+def _extract_imports(root: Node, source_bytes: bytes) -> list[PythonImport]:
     imports: list[PythonImport] = []
-    pending = [tree.root_node]
+    pending = [root]
 
     while pending:
         node = pending.pop()

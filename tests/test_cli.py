@@ -515,13 +515,85 @@ class CliTests(unittest.TestCase):
             self.assertTrue(broken["message"])
             self.assertEqual(module["graph"]["nodes"][1]["name"], "run")
 
+    def test_analyze_reports_static_dependencies_and_unresolved_imports(self) -> None:
+        with TemporaryDirectory() as directory:
+            package = Path(directory) / "pkg"
+            package.mkdir()
+            (package / "main.py").write_text(
+                "from .utils import load as read\n"
+                "import pkg.broken\n"
+                "from external_tool import run\n"
+                "def start(): pass\n",
+                encoding="utf-8",
+            )
+            (package / "utils.py").touch()
+            (package / "broken.py").write_text(
+                "import pkg.utils\ndef bad(:\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(["analyze", directory, "--dependencies"])
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            report = json.loads(result.stdout)
+            files = {file["path"]: file for file in report["files"]}
+            self.assertEqual(files["pkg/broken.py"]["status"], "failed")
+            self.assertEqual(files["pkg/main.py"]["graph"]["nodes"][1]["name"], "start")
+            self.assertEqual(
+                report["dependencies"],
+                {
+                    "edges": [
+                        {
+                            "source": "pkg/main.py",
+                            "target": "pkg/utils.py",
+                            "kind": "imports",
+                            "declaration": {
+                                "module": "utils",
+                                "name": "load",
+                                "alias": "read",
+                                "level": 1,
+                                "line": 1,
+                            },
+                        },
+                        {
+                            "source": "pkg/main.py",
+                            "target": "pkg/broken.py",
+                            "kind": "imports",
+                            "declaration": {
+                                "module": "pkg.broken",
+                                "name": None,
+                                "alias": None,
+                                "level": 0,
+                                "line": 2,
+                            },
+                        },
+                    ],
+                    "unresolved": [
+                        {
+                            "source": "pkg/main.py",
+                            "declaration": {
+                                "module": "external_tool",
+                                "name": "run",
+                                "alias": None,
+                                "level": 0,
+                                "line": 3,
+                            },
+                        },
+                    ],
+                },
+            )
+
     def test_analyze_returns_empty_report_for_empty_directory(self) -> None:
         with TemporaryDirectory() as directory:
             result = self.run_cli(["analyze", directory])
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stderr, "")
-            self.assertEqual(json.loads(result.stdout)["files"], [])
+            self.assertEqual(
+                json.loads(result.stdout),
+                {"root": Path(directory).absolute().as_posix(), "files": []},
+            )
 
     def test_analyze_reports_invalid_directory_on_stderr(self) -> None:
         with TemporaryDirectory() as directory:

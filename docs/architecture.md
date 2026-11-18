@@ -10,16 +10,18 @@
 - `src/repotrail/analysis/scanner.py`：文件收集与基础过滤。
 - `src/repotrail/analysis/languages.py`：按扩展名识别候选语言。
 - `src/repotrail/analysis/python_parser.py`：使用同一套语法树解析逻辑提取定义、嵌套归属、导入声明和行号。
-- `src/repotrail/analysis/import_resolution.py`：从已扫描的文件清单静态定位 Python 相对导入。
+- `src/repotrail/analysis/import_resolution.py`：从已扫描的文件清单静态定位 Python 绝对导入与相对导入。
 - `src/repotrail/analysis/graph.py`：从定义结果构建单文件包含图。
 - `src/repotrail/analysis/query.py`：按节点 ID 查询单文件图谱的直接子节点。叶节点返回空列表，未知 ID 抛出 `KeyError`。
-- `src/repotrail/analysis/repository.py`：组合扫描、分类、提取与图谱构建，记录每个文件的分析状态。
+- `src/repotrail/analysis/repository.py`：组合扫描、分类、提取与图谱构建，记录文件状态及可选的跨文件依赖。
 
 依赖由命令行或目录编排指向具体分析模块；图谱构建依赖解析结果类型，底层模块不反向依赖命令行。
 `analysis/__init__.py` 只说明包职责，不引入额外转发接口或初始化副作用。
 测试保留在根目录 `tests/`，导入与模拟目标统一使用 `repotrail.analysis.*`。
 
-`resolve_relative_import(source_file, declaration, indexed_files)` 接收 `extract_python_imports()` 生成的记录。源文件和清单路径均相对于调用方选定的 Python 导入根目录。例如 `src` 布局可将 `src` 作为根目录，源文件传 `pkg/main.py`。函数返回清单中的 `.py` 文件路径或包的 `__init__.py`，找不到对应文件、超出包层级或遇到绝对导入时返回 `None`。对于 `from . import name`，只定位包的 `__init__.py`，`name` 的绑定由后续分析处理。
+`analyze_repository(root, include_dependencies=True)` 在已扫描路径上建立查找集合。对每个 Python 文件，`extract_python_structure()` 从同一棵语法树提取定义和导入，两份结果分别用于文件图与依赖报告。
+
+`resolve_import(source_file, declaration, indexed_files)` 按导入声明定位来源模块。源文件和清单路径均相对于调用方选定的 Python 导入根目录。例如 `src` 布局可将 `src` 作为根目录，源文件传 `pkg/main.py`。绝对导入从导入根目录查找，相对导入通过 `resolve_relative_import()` 根据源文件所在的包和前导点数量定位。结果可以是清单中的 `.py` 文件或包的 `__init__.py`。找不到对应文件或超出包层级时返回 `None`。对于 `from . import name`，只定位包的 `__init__.py`，`name` 的绑定由后续分析处理。
 
 ## 规划中的职责边界
 

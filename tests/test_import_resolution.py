@@ -3,7 +3,7 @@
 import unittest
 from pathlib import Path
 
-from repotrail.analysis.import_resolution import resolve_relative_import
+from repotrail.analysis.import_resolution import resolve_import, resolve_relative_import
 from repotrail.analysis.python_parser import extract_python_imports
 
 
@@ -76,3 +76,28 @@ class RelativeImportResolutionTests(unittest.TestCase):
                 self.assertIsNone(
                     resolve_relative_import(Path(source), declaration, indexed)
                 )
+
+
+class AbsoluteImportResolutionTests(unittest.TestCase):
+    def test_uses_the_import_root_and_prefers_package_initializers(self) -> None:
+        source = Path("pkg/main.py")
+        indexed = {
+            source,
+            Path("pkg/local.py"),
+            Path("shared.py"),
+            Path("shared/__init__.py"),
+            Path("shared/tools.py"),
+            Path("blocked.py"),
+            Path("blocked/tools.py"),
+        }
+        declarations = extract_python_imports(
+            "import shared\n"
+            "from shared.tools import run\n"
+            "import blocked.tools\n"
+            "import local\n"
+        )
+
+        self.assertEqual(
+            [resolve_import(source, declaration, indexed) for declaration in declarations],
+            [Path("shared/__init__.py"), Path("shared/tools.py"), None, None],
+        )
